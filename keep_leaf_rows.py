@@ -1,3 +1,6 @@
+import argparse
+from pathlib import Path
+
 import pandas as pd
 
 def keep_leaf_rows(
@@ -79,10 +82,9 @@ def build_leaf_from_products(
     level_names: list[str],
 ) -> pd.DataFrame:
     """
-    1) Read file with a 'Products' tree column
-    2) Split into hierarchy columns in `level_names`
-    3) Keep only leaf rows
-    4) Save to `out_path`
+    1) Take the first column, holding 'A | B | C' paths
+    2) Split it into hierarchy columns named by `level_names`
+    3) Keep only leaf rows and return them
     """
 
     products_col = df.columns[0]
@@ -90,6 +92,7 @@ def build_leaf_from_products(
     # --- split Products into levels ---
     split = df[products_col].astype(str).str.split("|", expand=True)
     split = split.apply(lambda col: col.str.strip())  # clean spaces
+    split = split.iloc[:, :len(level_names)]  # ignore levels beyond the named ones
 
     # in case there are fewer levels than names, only use what exists
     n_cols = split.shape[1]
@@ -101,15 +104,9 @@ def build_leaf_from_products(
     # --- keep leaf rows based on the levels we actually have ---
     leaf_df = keep_leaf_rows(df, use_levels)
 
-    # --- save & return ---
     return leaf_df
 
-file = r"C:\Users\Chris Teo\OneDrive\Documents\Internship\hierarchical dataset.xlsx"
-df = pd.read_excel(file, header = 0, sheet_name='Sheet1')
-
-print(df.head())  # show original data
-
-level_names = [
+LEVEL_NAMES = [
     "Category",
     "Function",
     "Brand",
@@ -117,7 +114,28 @@ level_names = [
     "SubCategory",
 ]
 
-leaf_df = build_leaf_from_products(df, level_names)
 
-print(leaf_df.head())   # show the filtered leaf rows
-leaf_df.to_excel(r"C:\Users\Chris Teo\OneDrive\Documents\Internship\hierarchical_leaf_only.xlsx", index=False)
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Keep only the deepest (leaf) row of each branch in a hierarchical path file."
+    )
+    parser.add_argument("input", nargs="?", default="hierarchical dataset.xlsx",
+                        help="Excel file with one 'A | B | C' path per row in the first column")
+    parser.add_argument("output", nargs="?", default="hierarchical_leaf_only.xlsx",
+                        help="Where to save the leaf-only Excel file")
+    parser.add_argument("--sheet", default="Sheet1", help="Sheet name to read (default: Sheet1)")
+    args = parser.parse_args()
+
+    # header=None: the file has no header row, so the first path is kept as data
+    df = pd.read_excel(args.input, header=None, sheet_name=args.sheet, names=["Path"])
+    print(df.head())  # show original data
+
+    leaf_df = build_leaf_from_products(df, LEVEL_NAMES)
+    print(leaf_df.head())  # show the filtered leaf rows
+
+    leaf_df.to_excel(args.output, index=False)
+    print(f"Saved {len(leaf_df)} leaf rows to {Path(args.output).resolve()}")
+
+
+if __name__ == "__main__":
+    main()
